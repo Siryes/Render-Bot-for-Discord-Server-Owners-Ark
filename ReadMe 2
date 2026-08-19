@@ -1,0 +1,5 @@
+Install Required LibrariesBashpip install discord.py
+Configure the Script (Ark-Refresh.py)Open Ark-Refresh.py and set your credentials:Token: 
+Set environment variable DISCORD_TOKEN or replace "YOUR_DISCORD_BOT_TOKEN_HERE" in the file.Server ID: Replace GUILD_ID = 123456789012345678 with your actual Discord Server ID to enable instant slash command syncing.
+3. Running the BotRun the script using Python:Bashpython Ark-Refresh.py
+Available Slash CommandsCommandDescription/setupbasesPosts cards for all currently active maps into the channel./addmapRe-activates a map/server and posts its card to the channel./removemapDeactivates a map/server and deletes its existing card from the channel./setserverAssigns a specific server number/ID to a map card./settierUpdates structure material (Stone, Metal, Tek) to recalculate decay days.
