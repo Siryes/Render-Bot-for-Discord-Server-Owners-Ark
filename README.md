@@ -34,3 +34,5 @@ A Discord slash-command bot designed for ARK: Survival Evolved & Ascended tribes
    ```bash
    git clone [https://github.com/YOUR_USERNAME/ark-render-bot.git](https://github.com/YOUR_USERNAME/ark-render-bot.git)
    cd ark-render-bot
+
+There are 'free' discord bot hosting sites out there, use google
