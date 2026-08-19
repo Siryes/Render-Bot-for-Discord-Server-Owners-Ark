@@ -1,0 +1,446 @@
+import datetime
+import os
+import discord
+from discord import app_commands
+from discord.ext import commands, tasks
+
+# ------------------------------------------------------------------
+# CONFIGURATION
+# ------------------------------------------------------------------
+TOKEN = os.getenv("DISCORD_TOKEN", "YOUR_DISCORD_BOT_TOKEN_HERE")
+
+# Set your Discord Server ID here for instant slash command syncing
+# (Right-click your server icon in Discord -> Copy Server ID)
+GUILD_ID = 123456789012345678  # <--- REPLACE WITH YOUR DISCORD SERVER ID
+
+TRIGGER_EMOJIS = ["🔄", "🦖"]
+
+MATERIAL_TIERS = {
+    "stone": 12,
+    "metal": 16,
+    "tek": 20,
+}
+
+BASE_CONFIGS = {
+    "aberration": {
+        "title": "🏰 Base Render Status: ABERRATION",
+        "image": "https://imgur.com/H6XMVal.png",
+        "tier": "tek",
+        "server": "N/A",
+        "active": True,
+        "last_render_time": None,
+        "alert_sent": False,
+        "message_id": None,
+        "channel_id": None,
+    },
+    "scorched": {
+        "title": "🏰 Base Render Status: SCORCHED EARTH",
+        "image": "https://imgur.com/RzQqAR6.png",
+        "tier": "tek",
+        "server": "N/A",
+        "active": True,
+        "last_render_time": None,
+        "alert_sent": False,
+        "message_id": None,
+        "channel_id": None,
+    },
+    "colony": {
+        "title": "🏰 Base Render Status: LOST COLONY",
+        "image": "https://imgur.com/CLXfilu.png",
+        "tier": "tek",
+        "server": "N/A",
+        "active": True,
+        "last_render_time": None,
+        "alert_sent": False,
+        "message_id": None,
+        "channel_id": None,
+    },
+    "genesis": {
+        "title": "🏰 Base Render Status: GENESIS 1",
+        "image": "https://imgur.com/KvayXHG.png",
+        "tier": "tek",
+        "server": "N/A",
+        "active": True,
+        "last_render_time": None,
+        "alert_sent": False,
+        "message_id": None,
+        "channel_id": None,
+    },
+    "extinction_5938": {
+        "title": "🏰 Base Render Status: EXTINCTION",
+        "image": "https://imgur.com/sVXCfPa.png",
+        "tier": "tek",
+        "server": "5938",
+        "active": True,
+        "last_render_time": None,
+        "alert_sent": False,
+        "message_id": None,
+        "channel_id": None,
+    },
+    "extinction_5939": {
+        "title": "🏰 Base Render Status: EXTINCTION",
+        "image": "https://imgur.com/sVXCfPa.png",
+        "tier": "tek",
+        "server": "5939",
+        "active": True,
+        "last_render_time": None,
+        "alert_sent": False,
+        "message_id": None,
+        "channel_id": None,
+    },
+    "astraeos": {
+        "title": "🏰 Base Render Status: ASTRAEOS",
+        "image": "https://imgur.com/JcfOuGD.png",
+        "tier": "tek",
+        "server": "N/A",
+        "active": True,
+        "last_render_time": None,
+        "alert_sent": False,
+        "message_id": None,
+        "channel_id": None,
+    },
+    "center": {
+        "title": "🏰 Base Render Status: THE CENTER",
+        "image": "https://imgur.com/RHI9DzS.png",
+        "tier": "tek",
+        "server": "N/A",
+        "active": True,
+        "last_render_time": None,
+        "alert_sent": False,
+        "message_id": None,
+        "channel_id": None,
+    },
+    "ragnarok": {
+        "title": "🏰 Base Render Status: RAGNAROK",
+        "image": "https://imgur.com/cJNosXp.png",
+        "tier": "tek",
+        "server": "N/A",
+        "active": True,
+        "last_render_time": None,
+        "alert_sent": False,
+        "message_id": None,
+        "channel_id": None,
+    },
+    "valguero": {
+        "title": "🏰 Base Render Status: VALGUERO",
+        "image": "https://imgur.com/efXsroj.png",
+        "tier": "tek",
+        "server": "N/A",
+        "active": True,
+        "last_render_time": None,
+        "alert_sent": False,
+        "message_id": None,
+        "channel_id": None,
+    },
+}
+# ------------------------------------------------------------------
+
+intents = discord.Intents.default()
+intents.message_content = True
+intents.reactions = True
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+
+def build_card_embed(config: dict, user_mention: str) -> discord.Embed:
+  tier_key = config["tier"]
+  render_days = MATERIAL_TIERS[tier_key]
+  server_num = config.get("server", "N/A")
+
+  now = datetime.datetime.now(datetime.timezone.utc)
+  render_time_unix = int(now.timestamp())
+  next_render_unix = int((now + datetime.timedelta(days=render_days)).timestamp())
+
+  config["last_render_time"] = now
+  config["alert_sent"] = False
+
+  embed = discord.Embed(
+      title=config["title"],
+      color=discord.Color.green(),
+  )
+  embed.add_field(name="Server", value=f"`{server_num}`", inline=True)
+  embed.add_field(name="Last Rendered By", value=user_mention, inline=True)
+  embed.add_field(
+      name="Rendered At", value=f"<t:{render_time_unix}:F>", inline=False
+  )
+  embed.add_field(
+      name="Next Render Due",
+      value=f"<t:{next_render_unix}:R> (<t:{next_render_unix}:F>)",
+      inline=False,
+  )
+  embed.set_image(url=config["image"])
+  embed.set_footer(
+      text=(
+          f"Material: {tier_key.upper()} | Timer set for {render_days} days.\n"
+          "⚠️ Dinos will decay in 9 days if left out"
+      )
+  )
+  return embed
+
+
+@bot.event
+async def on_ready():
+  print(f"Logged in as {bot.user}!")
+
+  try:
+    if GUILD_ID != 123456789012345678:
+      guild = discord.Object(id=GUILD_ID)
+      bot.tree.copy_global_to(guild=guild)
+      synced = await bot.tree.sync(guild=guild)
+      print(
+          f"Instantly synced {len(synced)} slash command(s) to server"
+          f" {GUILD_ID}!"
+      )
+    else:
+      synced = await bot.tree.sync()
+      print(f"Synced {len(synced)} slash command(s) globally.")
+  except Exception as e:
+    print(f"Failed to sync slash commands: {e}")
+
+  if not check_decay_timers.is_running():
+    check_decay_timers.start()
+
+
+# ------------------------------------------------------------------
+# BACKGROUND DECAY CHECKER
+# ------------------------------------------------------------------
+@tasks.loop(hours=1)
+async def check_decay_timers():
+  now = datetime.datetime.now(datetime.timezone.utc)
+
+  for map_key, config in BASE_CONFIGS.items():
+    if not config.get("active", True):
+      continue
+
+    last_render = config.get("last_render_time")
+    channel_id = config.get("channel_id")
+    alert_sent = config.get("alert_sent", False)
+
+    if last_render and channel_id and not alert_sent:
+      tier_days = MATERIAL_TIERS[config["tier"]]
+      due_date = last_render + datetime.timedelta(days=tier_days)
+      time_left = due_date - now
+
+      if time_left < datetime.timedelta(days=2):
+        channel = bot.get_channel(channel_id)
+        if channel:
+          map_title = config["title"].replace("🏰 Base Render Status: ", "")
+          server_num = config.get("server", "N/A")
+          await channel.send(
+              f"🚨 **@admin** Decay timer up for **{map_title}** (Server:"
+              f" `{server_num}`)!"
+          )
+          config["alert_sent"] = True
+
+
+# ------------------------------------------------------------------
+# SLASH COMMAND CHOICES
+# ------------------------------------------------------------------
+MAP_CHOICES = [
+    app_commands.Choice(name="Aberration", value="aberration"),
+    app_commands.Choice(name="Scorched Earth", value="scorched"),
+    app_commands.Choice(name="Lost Colony", value="colony"),
+    app_commands.Choice(name="Genesis 1", value="genesis"),
+    app_commands.Choice(name="Extinction (5938)", value="extinction_5938"),
+    app_commands.Choice(name="Extinction (5939)", value="extinction_5939"),
+    app_commands.Choice(name="Astraeos", value="astraeos"),
+    app_commands.Choice(name="The Center", value="center"),
+    app_commands.Choice(name="Ragnarok", value="ragnarok"),
+    app_commands.Choice(name="Valguero", value="valguero"),
+]
+
+# ------------------------------------------------------------------
+# SLASH COMMANDS
+# ------------------------------------------------------------------
+
+
+@bot.tree.command(
+    name="setupbases",
+    description="Posts active map cards into the current channel.",
+)
+async def setup_bases(interaction: discord.Interaction):
+  await interaction.response.send_message(
+      "Setting up active base cards...", ephemeral=True
+  )
+  for key, config in BASE_CONFIGS.items():
+    if not config.get("active", True):
+      continue
+
+    embed = build_card_embed(config, interaction.user.mention)
+    msg = await interaction.channel.send(embed=embed)
+    await msg.add_reaction("🦖")
+
+    config["message_id"] = msg.id
+    config["channel_id"] = interaction.channel_id
+
+
+@bot.tree.command(
+    name="removemap",
+    description="Deletes a card from the channel and hides it from setup.",
+)
+@app_commands.choices(map_name=MAP_CHOICES)
+async def remove_map(
+    interaction: discord.Interaction, map_name: app_commands.Choice[str]
+):
+  map_key = map_name.value
+  config = BASE_CONFIGS.get(map_key)
+
+  if not config:
+    await interaction.response.send_message("Map not found.", ephemeral=True)
+    return
+
+  config["active"] = False
+
+  if config.get("message_id") and config.get("channel_id"):
+    try:
+      channel = bot.get_channel(config["channel_id"])
+      if channel:
+        msg = await channel.fetch_message(config["message_id"])
+        await msg.delete()
+    except Exception as e:
+      print(f"Could not delete message for {map_key}: {e}")
+
+    config["message_id"] = None
+    config["channel_id"] = None
+
+  await interaction.response.send_message(
+      f"❌ **{map_name.name}** has been deactivated and removed.", ephemeral=True
+  )
+
+
+@bot.tree.command(
+    name="addmap",
+    description="Re-activates a map and posts its card into the channel.",
+)
+@app_commands.choices(map_name=MAP_CHOICES)
+async def add_map(
+    interaction: discord.Interaction, map_name: app_commands.Choice[str]
+):
+  map_key = map_name.value
+  config = BASE_CONFIGS.get(map_key)
+
+  if not config:
+    await interaction.response.send_message("Map not found.", ephemeral=True)
+    return
+
+  config["active"] = True
+
+  embed = build_card_embed(config, interaction.user.mention)
+  msg = await interaction.channel.send(embed=embed)
+  await msg.add_reaction("🦖")
+
+  config["message_id"] = msg.id
+  config["channel_id"] = interaction.channel_id
+
+  await interaction.response.send_message(
+      f"✅ **{map_name.name}** is now active and card has been posted!",
+      ephemeral=True,
+  )
+
+
+@bot.tree.command(
+    name="setserver", description="Sets the server number for a map card."
+)
+@app_commands.choices(map_name=MAP_CHOICES)
+async def set_server(
+    interaction: discord.Interaction,
+    map_name: app_commands.Choice[str],
+    server_number: str,
+):
+  map_key = map_name.value
+  BASE_CONFIGS[map_key]["server"] = server_number
+  await interaction.response.send_message(
+      f"✅ Server for **{map_name.name}** updated to **{server_number}**.",
+      ephemeral=True,
+  )
+
+
+@bot.tree.command(
+    name="settier", description="Sets the material decay tier for a map card."
+)
+@app_commands.choices(
+    map_name=MAP_CHOICES,
+    tier=[
+        app_commands.Choice(name="Stone (12 days)", value="stone"),
+        app_commands.Choice(name="Metal (16 days)", value="metal"),
+        app_commands.Choice(name="Tek (20 days)", value="tek"),
+    ],
+)
+async def set_tier(
+    interaction: discord.Interaction,
+    map_name: app_commands.Choice[str],
+    tier: app_commands.Choice[str],
+):
+  map_key = map_name.value
+  tier_key = tier.value
+  days = MATERIAL_TIERS[tier_key]
+
+  BASE_CONFIGS[map_key]["tier"] = tier_key
+  await interaction.response.send_message(
+      f"✅ **{map_name.name}** material set to **{tier_key.upper()}** ({days}"
+      " days).",
+      ephemeral=True,
+  )
+
+
+# ------------------------------------------------------------------
+# REACTION EVENT
+# ------------------------------------------------------------------
+
+
+@bot.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+  if payload.user_id == bot.user.id:
+    return
+
+  if str(payload.emoji) in TRIGGER_EMOJIS:
+    channel = bot.get_channel(payload.channel_id)
+    if not channel:
+      return
+
+    try:
+      message = await channel.fetch_message(payload.message_id)
+      user = await bot.fetch_user(payload.user_id)
+
+      if not message.embeds:
+        return
+
+      matched_config = None
+      for map_key, config in BASE_CONFIGS.items():
+        if not config.get("active", True):
+          continue
+        if config.get("message_id") == message.id:
+          matched_config = config
+          break
+
+      if not matched_config:
+        existing_embed = message.embeds[0]
+        embed_title = (
+            existing_embed.title.lower() if existing_embed.title else ""
+        )
+        for map_key, config in BASE_CONFIGS.items():
+          if not config.get("active", True):
+            continue
+          if (
+              map_key in embed_title
+              or config["title"].lower() in embed_title
+          ):
+            matched_config = config
+            break
+
+      if not matched_config:
+        return
+
+      matched_config["message_id"] = message.id
+      matched_config["channel_id"] = channel.id
+
+      new_embed = build_card_embed(matched_config, user.mention)
+
+      await message.edit(embed=new_embed)
+      await message.remove_reaction(payload.emoji, user)
+
+    except Exception as e:
+      print(f"Error processing reaction: {e}")
+
+
+bot.run(TOKEN)
